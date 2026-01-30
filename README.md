@@ -106,3 +106,34 @@ src/main/java/com/tcore/tcorev2/
 
 ### 3. AI 기반 자율 장애 대응 (Self-Healing)
 * 정적 임계치 기반의 모니터링 한계를 극복하기 위해 AI 에이전트를 도입했습니다. 에이전트는 실시간 지표를 분석하여 비정상 패턴을 감지하면 즉시 **Rate Limiting** 수치를 조정하거나 이상 IP를 차단하는 도구를 스스로 실행합니다.
+
+---
+## 🗺️ Project Roadmap
+
+티켓팅 시스템의 핵심 기능을 단계별로 구현하며, 각 단계마다 성능 최적화와 정합성 검증을 병행합니다.
+
+### ✅ Phase 1: Infrastructure & Domain Modeling (Completed)
+- [x] 기술 스택 선정 및 프로젝트 환경 설정 (Java 21, Spring Boot 3.5.10)
+- [x] 핵심 도메인 모델링 (Concert, Schedule, Seat, Reservation)
+- [x] Docker 기반 MariaDB 및 Redis 인프라 구축
+
+### 🔄 Phase 2: Concert Information API (In Progress)
+- [x] 전체 공연 목록 조회 API 구현
+- [x] 특정 공연의 상세 일정 및 실시간 잔여 좌석 조회 구현
+- [x] 레이어드 아키텍처 리팩토링 및 테스트 코드(MockMvc, Mockito) 작성
+- [ ] 개발 브랜치(`feature/concert-search`) PR 및 `develop` 병합
+
+### 📅 Phase 3: Distributed Lock Reservation (Planned)
+- [ ] Redisson 기반 분산 락(Distributed Lock) 환경 설정
+- [ ] 좌석 선택 및 임시 예약 로직 구현 (초과 예약 방지)
+- [ ] 동시성 테스트를 통한 데이터 정합성 검증
+
+### 🚀 Phase 4: Virtual Waiting Queue & AI Ops (Planned)
+- [ ] Redis ZSet 기반의 가상 대기열(Waiting Queue) 시스템 구축
+- [ ] Spring AI를 활용한 실시간 트래픽 모니터링 및 대기열 자동 제어
+- [ ] 트래픽 Spike 상황에서의 시스템 부하 테스트
+
+### 💳 Phase 5: Payment & Final Confirmation (Planned)
+- [ ] 결제 연동 시뮬레이션 및 예매 확정 처리
+- [ ] 예매 취소 및 좌석 재개방 로직 구현
+- [ ] 전체 비즈니스 흐름 최종 통합 테스트
