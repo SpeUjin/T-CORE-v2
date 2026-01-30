@@ -72,7 +72,31 @@ graph TD
     Agent -.-> LLM[OpenAI / GPT-4o]
 ```
 ---
+## 📂 Directory Structure
 
+본 프로젝트는 유지보수성과 확장성을 극대화하기 위해 **계층형 아키텍처(Layered Architecture)**를 채택하였으며, 각 레이어의 책임을 명확히 분리했습니다.
+
+```text
+src/main/java/com/tcore/tcorev2/
+├── api/                # [Interface Layer] 외부 요청(HTTP/REST) 진입점
+│   ├── controller/     # API 엔드포인트 정의
+│   └── dto/            # 데이터 전송 객체 (Request/Response 분리)
+├── application/        # [Application Layer] 비즈니스 로직 조립 및 트랜잭션 관리
+│   └── service/        # 비즈니스 흐름 제어 (Use Case 구현)
+├── domain/             # [Domain Layer] 핵심 비즈니스 규칙 및 도메인 모델 (Pure Logic)
+│   ├── entity/         # JPA 엔티티 (핵심 데이터 모델)
+│   ├── repository/     # 데이터 접근 인터페이스
+│   └── model/          # 도메인 전용 Enum 및 상수
+├── infrastructure/     # [Infrastructure Layer] 외부 기술 및 라이브러리 연동
+│   ├── ai/             # Spring AI 기반 자율 운영 에이전트 구현체
+│   ├── redis/          # Redisson 분산 락 및 대기열(ZSET) 설정
+│   └── config/         # DB, Security 등 전역 설정
+└── global/             # [Global] 프로젝트 전역 공통 모듈
+    ├── error/          # 공통 예외 처리 (GlobalExceptionHandler)
+    ├── util/           # 공통 유틸리티 클래스
+    └── common/         # 공통 Response 형식 및 상수
+```
+---
 ## 💡 Key Engineering Challenges
 ### 1. 분산 환경에서의 레이스 컨디션 해결
 * 다중 서버 환경에서 발생하는 좌석 선점 문제를 해결하기 위해 **Redis 분산 락**을 도입하여 1,000 TPS 이상의 환경에서도 데이터 오차율 0%를 달성하고자 했습니다.
