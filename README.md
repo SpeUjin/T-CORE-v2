@@ -28,8 +28,35 @@ T-CORE는 인기 콘서트 예매 시 발생하는 급격한 트래픽 폭주(Tr
 ---
 
 ## 🏗 System Architecture
+```mermaid
+graph TD
+    %% 사용자 및 로드밸런서
+    User((User Client)) --> LB[Nginx / Load Balancer]
+    
+    %% 서버 및 로직
+    subgraph "Spring Boot Server (Java 21 Virtual Threads)"
+        LB --> API[REST Controller]
+        API --> VWR[Virtual Waiting Room Service]
+        VWR --> DL[Distributed Lock Manager]
+        DL --> RS[Reservation Service]
+    end
 
+    %% AI 레이어
+    subgraph "AI Observability Layer"
+        Agent((AI Monitoring Agent))
+        Actuator[Spring Boot Actuator] --> Agent
+        Agent -- "Tool Calling" --> VWR
+        Agent -- "Decision" --> DL
+    end
 
+    %% 데이터 저장소
+    RS --> MariaDB[(MariaDB 11.2)]
+    VWR -- "Queue/Token" --> Redis
+    DL -- "Redisson Lock" --> Redis[(Redis 7.2)]
+    
+    %% AI 외부 연결
+    Agent -.-> LLM[OpenAI / GPT-4o]
+```
 ---
 
 ## 💡 Key Engineering Challenges
