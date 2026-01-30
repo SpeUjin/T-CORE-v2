@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  # MariaDB 11.4 LTS (안정성 및 벡터 검색 지원)
+  mariadb:
+    image: mariadb:11.4
+    container_name: t-core-db
+    environment:
+      - MARIADB_ROOT_PASSWORD=root
+      - MARIADB_DATABASE=t_core
+      - MARIADB_USER=t_core_user
+      - MARIADB_PASSWORD=pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./data/mariadb:/var/lib/mysql
+
+  # Redis 7.4 (최신 인덱싱 및 성능 최적화)
+  redis:
+    image: redis:7.4-alpine
+    container_name: t-core-redis
+    ports:
+      - "6379:6379"
