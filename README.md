@@ -13,19 +13,19 @@ T-CORE는 인기 콘서트 예매 시 발생하는 급격한 트래픽 폭주(Tr
 
 ## 🛠 Tech Stack & Decision Rationale
 
-본 프로젝트는 단순한 기술의 유행을 따르는 것이 아니라, **성능(Performance), 확장성(Scalability), 운영 효율성(Efficiency)**이라는 엔지니어링 원칙에 따라 최적의 기술 버전을 선정했습니다.
+본 프로젝트는 단순한 기술의 유행을 따르는 것이 아니라, **성능(Performance), 확장성(Scalability), 운영 효율성(Efficiency)**이라는 엔지니어링 원칙에 따라 최적의 기술 스택을 선정했습니다.
 
-### 1. Core Engine: Java 25 (LTS) & Spring Boot 4.0.2
-* **Java 25 (LTS):** Spring Boot 4.x의 베이스라인인 Java 25를 채택했습니다. 이전 LTS(21) 대비 **Virtual Threads**의 스케줄링 성능이 개선되었으며, **Scoped Values**를 통해 수만 개의 경량 스레드 간 데이터를 더 안전하고 가볍게 공유하여 고부하 I/O 상황에서의 리소스 효율을 극대화했습니다.
-* **Spring Boot 4.0.2:** Jakarta EE 11을 기반으로 하는 최신 메이저 버전입니다. 프레임워크 차원에서 **Spring AI 2.0**과의 완벽한 통합을 지원하며, 런타임 최적화를 통해 티켓팅과 같은 트래픽 Spike 상황에서 최소한의 오버헤드로 최대의 성능을 이끌어냅니다.
+### 1. Core Engine: Java 21 (LTS) & Spring Boot 3.5.10
+* **Java 21 (LTS):** 고성능 티켓팅 시스템의 핵심인 **Virtual Threads**를 안정적으로 지원하는 최적의 LTS 버전입니다. 수만 개의 경량 스레드를 통해 차단(Blocking) I/O 상황에서도 리소스 효율을 극대화하며, **Scoped Values**를 통해 스레드 간 데이터를 안전하게 공유합니다.
+* **Spring Boot 3.5.10:** 최신 안정 런타임으로 **Jakarta EE 11** 표준 지향 및 차세대 성능 최적화가 적용되었습니다. 프레임워크 차원의 가상 스레드 최적화를 통해 티켓팅과 같은 트래픽 Spike 상황에서 최소한의 오버헤드로 최대의 처리량을 이끌어냅니다.
 
-### 2. Intelligent Ops: Spring AI 2.0.0 (Agentic Framework)
-* **Spring AI 2.0.0:** Spring Boot 4.0.2와 밀접하게 설계된 차세대 AI 프레임워크입니다.
-* **선정 이유:** 외부 라이브러리(LangChain4j 등)에 대한 의존성을 최소화하고, **Spring Actuator**가 수집하는 실시간 메트릭(CPU, 대기열 상태 등)을 AI 에이전트가 직접 관찰(Observability)하고 제어할 수 있는 표준 인터페이스를 제공하기 때문입니다. 이를 통해 자바 네이티브한 AIOps 환경을 구축했습니다.
+### 2. Intelligent Ops: Spring AI 1.0.0-M5 (Agentic Framework)
+* **Spring AI (Milestone 5):** Spring Boot 환경에서 외부 라이브러리(LangChain4j 등) 의존성을 최소화하고 자바 네이티브한 AI 개발을 가능케 합니다.
+* **선정 이유:** **Spring Actuator**가 수집하는 실시간 메트릭(CPU, 대기열 상태 등)을 AI 에이전트가 직접 관찰(Observability)하고 제어할 수 있는 표준 인터페이스를 제공하기 때문입니다. 이를 통해 트래픽 폭주 시 스스로 대기열 진입 속도를 조절하는 **자율 운영(AIOps)** 환경을 구축했습니다.
 
 ### 3. Storage & Concurrency: Redis 7.4 & MariaDB 11.4 (LTS)
-* **Redis 7.4 (Redisson 3.42+):** 초과 예약(Overselling) 방지와 가상 대기열 구현을 위해 선정했습니다. Redis 7.4의 개선된 인덱싱 기능은 실시간 좌석 조회를 가속화하며, **Redisson**의 Pub/Sub 기반 분산 락을 통해 스핀 락(Spin Lock) 없는 효율적인 동시성 제어를 보장합니다.
-* **MariaDB 11.4 (LTS):** 11.x 시리즈의 장기 지원(LTS) 버전입니다. 대규모 트래픽 하에서의 트랜잭션 안정성이 검증되었으며, 특히 향후 에이전트의 예매 패턴 분석 및 추천에 필요한 **벡터 검색(Vector Search)** 기능을 내장하고 있어 데이터 계층의 확장성을 확보했습니다.
+* **Redis 7.4 (Redisson 3.42+):** 초과 예약(Overselling) 방지와 가상 대기열 구현을 위해 선정했습니다. **Redisson**의 Pub/Sub 기반 분산 락(Distributed Lock)을 활용하여 스핀 락(Spin Lock) 없는 효율적인 동시성 제어를 보장합니다.
+* **MariaDB 11.4 (LTS):** 11.x 시리즈의 장기 지원 버전으로, 대규모 트랜잭션 안정성이 검증되었습니다. 특히 향후 에이전트의 예매 패턴 분석 및 추천에 필요한 **벡터 검색(Vector Search)** 기능을 내장하고 있어 데이터 계층의 미래 확장성을 확보했습니다.
 
 ---
 
@@ -33,9 +33,9 @@ T-CORE는 인기 콘서트 예매 시 발생하는 급격한 트래픽 폭주(Tr
 
 | 분류 | 기술 | 버전 | 핵심 역할 |
 | :--- | :--- | :--- | :--- |
-| **Language** | Java | **25 (LTS)** | 고성능 가상 스레드 및 데이터 안정성 |
-| **Framework** | Spring Boot | **4.0.2** | 시스템 엔진 및 Jakarta EE 11 표준 준수 |
-| **AI Agent** | Spring AI | **2.0.0** | 자율 시스템 모니터링 및 자동 제어 |
+| **Language** | Java | **21 (LTS)** | 고성능 가상 스레드 및 데이터 안정성 |
+| **Framework** | Spring Boot | **3.5.10** | 시스템 엔진 및 최신 런타임 최적화 |
+| **AI Agent** | Spring AI | **1.0.0-M5** | 자율 시스템 모니터링 및 자동 제어 |
 | **Lock/Cache** | Redis | **7.4** | 분산 락 및 가상 대기열(ZSET) 관리 |
 | **Database** | MariaDB | **11.4 (LTS)** | 영속성 데이터 관리 및 벡터 데이터 지원 |
 
