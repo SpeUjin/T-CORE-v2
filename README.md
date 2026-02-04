@@ -121,7 +121,7 @@ src/main/java/com/tcore/tcorev2/
 - [x] 전체 공연 목록 조회 API 구현
 - [x] 특정 공연의 상세 일정 및 실시간 잔여 좌석 조회 구현
 - [x] 레이어드 아키텍처 리팩토링 및 테스트 코드(MockMvc, Mockito) 작성
-- [ ] 개발 브랜치(`feature/concert-search`) PR 및 `develop` 병합
+- [x] 개발 브랜치(`feature/concert-search`) PR 및 `develop` 병합
 
 ### 📅 Phase 3: Distributed Lock Reservation (Planned)
 - [ ] Redisson 기반 분산 락(Distributed Lock) 환경 설정
