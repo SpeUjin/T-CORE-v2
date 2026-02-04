@@ -123,15 +123,15 @@ src/main/java/com/tcore/tcorev2/
 - [x] 레이어드 아키텍처 리팩토링 및 테스트 코드(MockMvc, Mockito) 작성
 - [x] 개발 브랜치(`feature/concert-search`) PR 및 `develop` 병합
 
-### 📅 Phase 3: Distributed Lock Reservation (Planned)
-- [ ] Redisson 기반 분산 락(Distributed Lock) 환경 설정
-- [ ] 좌석 선택 및 임시 예약 로직 구현 (초과 예약 방지)
-- [ ] 동시성 테스트를 통한 데이터 정합성 검증
+### 📅 Phase 3: Distributed Lock Reservation (Completed)
+- [x] Redisson 기반 분산 락(Distributed Lock) 환경 설정
+- [x] 좌석 선택 및 임시 예약 로직 구현 (초과 예약 방지)
+- [x] 동시성 테스트를 통한 데이터 정합성 검증
 
-### 🚀 Phase 4: Virtual Waiting Queue & AI Ops (Planned)
-- [ ] Redis ZSet 기반의 가상 대기열(Waiting Queue) 시스템 구축
-- [ ] Spring AI를 활용한 실시간 트래픽 모니터링 및 대기열 자동 제어
-- [ ] 트래픽 Spike 상황에서의 시스템 부하 테스트
+### 🚀 Phase 4: Virtual Waiting Queue & AI Ops (Completed)
+- [x] Redis ZSet 기반의 가상 대기열(Waiting Queue) 시스템 구축
+- [x] Spring AI를 활용한 실시간 트래픽 모니터링 및 대기열 자동 제어
+- [x] 트래픽 Spike 상황에서의 시스템 부하 테스트 (Mock 시뮬레이션 검증)
 
 ### 💳 Phase 5: Payment & Final Confirmation (Planned)
 - [ ] 결제 연동 시뮬레이션 및 예매 확정 처리
