@@ -12,7 +12,10 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "reservations")
+@Table(name = "reservations", indexes = {
+        // status와 reservedAt을 묶어서 조회 속도를 극대화하는 복합 인덱스
+        @Index(name = "idx_status_reserved_at", columnList = "status, reservedAt")
+})
 public class Reservation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -50,4 +53,7 @@ public class Reservation {
         reservation.status = ReservationStatus.PENDING;
         return reservation;
     }
+
+    public void confirm() { this.status = ReservationStatus.CONFIRMED; }
+    public void cancel() { this.status = ReservationStatus.CANCELLED; }
 }

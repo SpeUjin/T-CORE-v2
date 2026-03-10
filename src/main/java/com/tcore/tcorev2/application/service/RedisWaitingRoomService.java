@@ -140,4 +140,24 @@ public class RedisWaitingRoomService {
         RSet<String> activeQueue = redissonClient.getSet(activeKey);
         return activeQueue.contains(userId.toString());
     }
+
+    /**
+     * 유저를 활성 상태(Active Queue)에서 제거합니다.
+     * 결제 성공/실패/취소 등 예매 플로우가 끝났을 때 즉시 호출하여 대기열 회전율을 높입니다.
+     */
+    public void removeActiveUser(Long userId, Long concertId) {
+        String activeKey = ACTIVE_KEY_PREFIX + concertId;
+        RSet<String> activeQueue = redissonClient.getSet(activeKey);
+
+        // Java의 Set.remove()와 완전히 동일하게 동작합니다.
+        // 내부적으로 Redis의 SREM 명령어를 실행하여 O(1)의 시간 복잡도로 빠르게 삭제합니다.
+        boolean isRemoved = activeQueue.remove(userId.toString());
+
+        if (isRemoved) {
+            log.info("유저 {} 님이 예매 플로우를 종료하여 Active Queue에서 제거되었습니다. (Concert: {})", userId, concertId);
+        } else {
+            // 이미 만료되었거나 지워진 경우 false를 반환합니다.
+            log.debug("유저 {} 님은 이미 Active Queue에 존재하지 않습니다. (Concert: {})", userId, concertId);
+        }
+    }
 }

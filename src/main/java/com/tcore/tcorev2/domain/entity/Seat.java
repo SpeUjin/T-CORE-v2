@@ -55,4 +55,6 @@ public class Seat {
     public void completePayment() {
         this.status = SeatStatus.SOLD;
     }
+
+    public void release() { this.status = SeatStatus.AVAILABLE; }
 }
