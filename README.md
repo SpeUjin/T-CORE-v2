@@ -15,12 +15,12 @@ T-CORE는 인기 콘서트 예매 시 발생하는 급격한 트래픽 폭주(Tr
 
 본 프로젝트는 단순한 기술의 유행을 따르는 것이 아니라, **성능(Performance), 확장성(Scalability), 운영 효율성(Efficiency)**이라는 엔지니어링 원칙에 따라 최적의 기술 버전을 선정했습니다.
 
-### 1. Core Engine: Java 25 (LTS) & Spring Boot 4.0.2
-* **Java 25 (LTS):** Spring Boot 4.x의 베이스라인인 Java 25를 채택했습니다. 이전 LTS(21) 대비 **Virtual Threads**의 스케줄링 성능이 개선되었으며, **Scoped Values**를 통해 수만 개의 경량 스레드 간 데이터를 더 안전하고 가볍게 공유하여 고부하 I/O 상황에서의 리소스 효율을 극대화했습니다.
-* **Spring Boot 4.0.2:** Jakarta EE 11을 기반으로 하는 최신 메이저 버전입니다. 프레임워크 차원에서 **Spring AI 2.0**과의 완벽한 통합을 지원하며, 런타임 최적화를 통해 티켓팅과 같은 트래픽 Spike 상황에서 최소한의 오버헤드로 최대의 성능을 이끌어냅니다.
+### 1. Core Engine: Java 21 & Spring Boot 3.5.10
+* **Java 21:** Spring Boot 3.x의 베이스라인인 Java 21을 채택했습니다. Virtual Threads를 통해 수만 개의 경량 스레드 간 데이터를 더 안전하고 가볍게 공유하여 고부하 I/O 상황에서의 리소스 효율을 극대화했습니다.
+* **Spring Boot 3.5.10:** Jakarta EE 10을 기반으로 하는 최신 마이너 버전입니다. 프레임워크 차원에서 Spring AI 1.0.0-M5과의 완벽한 통합을 지원하며, 런타임 최적화를 통해 티켓팅과 같은 트래픽 Spike 상황에서 최소한의 오버헤드로 최대의 성능을 이끌어냅니다.
 
-### 2. Intelligent Ops: Spring AI 2.0.0 (Agentic Framework)
-* **Spring AI 2.0.0:** Spring Boot 4.0.2와 밀접하게 설계된 차세대 AI 프레임워크입니다.
+### 2. Intelligent Ops: Spring AI 1.0.0-M5 (Agentic Framework)
+* **Spring AI 1.0.0-M5:** Spring Boot 3.5.10과 밀접하게 설계된 AI 프레임워크입니다.
 * **선정 이유:** 외부 라이브러리(LangChain4j 등)에 대한 의존성을 최소화하고, **Spring Actuator**가 수집하는 실시간 메트릭(CPU, 대기열 상태 등)을 AI 에이전트가 직접 관찰(Observability)하고 제어할 수 있는 표준 인터페이스를 제공하기 때문입니다. 이를 통해 자바 네이티브한 AIOps 환경을 구축했습니다.
 
 ### 3. Storage & Concurrency: Redis 7.4 & MariaDB 11.4 (LTS)
@@ -33,9 +33,9 @@ T-CORE는 인기 콘서트 예매 시 발생하는 급격한 트래픽 폭주(Tr
 
 | 분류 | 기술 | 버전 | 핵심 역할 |
 | :--- | :--- | :--- | :--- |
-| **Language** | Java | **25 (LTS)** | 고성능 가상 스레드 및 데이터 안정성 |
-| **Framework** | Spring Boot | **4.0.2** | 시스템 엔진 및 Jakarta EE 11 표준 준수 |
-| **AI Agent** | Spring AI | **2.0.0** | 자율 시스템 모니터링 및 자동 제어 |
+| **Language** | Java | **21** | 고성능 가상 스레드 및 데이터 안정성 |
+| **Framework** | Spring Boot | **3.5.10** | 시스템 엔진 및 Jakarta EE 10 표준 준수 |
+| **AI Agent** | Spring AI | **1.0.0-M5** | 자율 시스템 모니터링 및 자동 제어 |
 | **Lock/Cache** | Redis | **7.4** | 분산 락 및 가상 대기열(ZSET) 관리 |
 | **Database** | MariaDB | **11.4 (LTS)** | 영속성 데이터 관리 및 벡터 데이터 지원 |
 
@@ -48,7 +48,7 @@ graph TD
     User((User Client)) --> LB[Nginx / Load Balancer]
     
     %% 서버 및 로직
-    subgraph "Spring Boot Server (Java 25 Virtual Threads)"
+    subgraph "Spring Boot Server (Java 21 Virtual Threads)"
         LB --> API[REST Controller]
         API --> VWR[Virtual Waiting Room Service]
         VWR --> DL[Distributed Lock Manager]
@@ -71,6 +71,61 @@ graph TD
     %% AI 외부 연결
     Agent -.-> LLM[OpenAI / GPT-4o]
 ```
+### 💳 Phase 5: Payment & Reservation Flow (결제 및 예매 확정 아키텍처)
+
+티켓팅 시스템의 가장 중요한 구간인 결제 및 예매 확정 단계의 비즈니스 흐름입니다. 외부 PG사 연동 시 발생할 수 있는 네트워크 지연 및 타임아웃 상황에서도 **데이터 정합성**을 보장하고, **안전한 좌석 재개방(보상 트랜잭션)**이 이루어지도록 설계했습니다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant API as API Server
+    participant RS as Reservation Service
+    participant Redis as Redis (Lock/Queue)
+    participant DB as MariaDB
+    participant PG as External PG (Mock)
+
+    User->>API: 결제 요청 (예약 정보 및 결제 수단)
+    API->>RS: 결제 처리 위임
+    RS->>Redis: 좌석 Lock 및 Active Queue 유효성 검증
+    
+    alt Lock 만료 또는 Queue 이탈
+        Redis-->>RS: Invalid / Expired
+        RS-->>API: Timeout Exception
+        API-->>User: 결제 시간 초과 안내 (메인 이동)
+    else Lock 유효 (Valid)
+        Redis-->>RS: Valid
+        RS->>DB: 예약 상태 변경 [PENDING_PAYMENT]
+        
+        Note over RS, PG: 트랜잭션 분리 구간 (Network I/O 방어)
+        RS->>PG: 외부 결제 승인 요청 (Mock)
+        
+        alt 결제 성공 (Happy Path)
+            PG-->>RS: 결제 승인 완료
+            RS->>DB: 예약 상태 변경 [CONFIRMED]
+            RS->>Redis: 좌석 Lock 해제 & Active Queue 이탈 (예매 완료)
+            RS-->>API: 예매 완료 정보 반환
+            API-->>User: 티켓 발급 및 예매 완료 화면
+        else 결제 실패 / 오류
+            PG-->>RS: 결제 실패 (Fail / Error)
+            RS->>DB: 예약 상태 변경 [CANCELLED]
+            RS->>Redis: 좌석 Lock 즉시 해제 (좌석 재개방)
+            RS-->>API: 예매 실패 에러 반환
+            API-->>User: 결제 실패 안내 (좌석 선택 재이동)
+        end
+    end
+
+    %% Safety Net (보상 트랜잭션)
+    loop Every 1 Minute (Scheduler)
+        RS->>DB: 만료된 [PENDING_PAYMENT] 상태 조회
+        RS->>DB: 상태 [CANCELLED] 일괄 업데이트
+        RS->>Redis: 점유된 좌석 Lock 강제 해제 (Safety Net)
+    end
+```
+#### 💡 Key Engineering Points in Phase 5
+1. **상태 기반 결제 대기 (PENDING_PAYMENT):** 외부 API 연동 중 서버 장애가 발생하더라도 결제 상태를 추적할 수 있도록 임시 상태를 도입했습니다.
+2. **트랜잭션 분리 (Transaction Segregation):** 외부 PG사 호출(Network I/O) 구간을 DB 트랜잭션(`@Transactional`)에서 분리하여, 결제 지연으로 인한 DB 커넥션 풀 고갈(Connection Pool Exhaustion)을 방지합니다.
+3. **Safety Net 스케줄러 (보상 트랜잭션):** 브라우저 종료, 네트워크 단절 등으로 결제 상태가 고착화된 경우, 백그라운드 스케줄러가 주기적으로 만료된 예약을 찾아 취소 처리하고 Redis 락을 강제로 해제하여 좌석을 안전하게 대기열로 재개방합니다.
 ---
 ## 📂 Directory Structure
 
