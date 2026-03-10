@@ -40,7 +40,75 @@ T-CORE는 인기 콘서트 예매 시 발생하는 급격한 트래픽 폭주(Tr
 | **Database** | MariaDB | **11.4 (LTS)** | 영속성 데이터 관리 및 벡터 데이터 지원 |
 
 ---
+## 🎫 Phase 5: High-Reliability Payment & Self-Healing Logic
 
+대규모 트래픽 환경에서 결제 정합성을 보장하고 시스템 가용성을 유지하기 위한 핵심 비즈니스 로직 설계입니다. 단순히 기능을 구현하는 것을 넘어, **분산 환경에서 발생할 수 있는 장애 지점을 예측하고 공학적으로 방어**하는 데 집중했습니다.
+
+### 1. 설계의 핵심 목표 (Core Objectives)
+* **장애 전파 차단:** 외부 API(PG사) 지연이 시스템 전체의 DB 커넥션 고갈로 이어지는 것을 방지
+* **데이터 정합성 보장:** 별도의 무거운 락 없이도 초과 예약(Overselling)을 100% 차단
+* **시스템 자가 치유:** 유저 이탈이나 서버 장애로 인해 멈춘 고아 데이터를 자동으로 복구
+
+---
+
+### 2. 핵심 엔지니어링 포인트 (Engineering Highlights)
+
+#### 🛡️ STEP 1: 결제 진입 및 트랜잭션 분리 (PaymentFacade)
+외부 통신(Network I/O) 구간을 DB 트랜잭션 범위 밖으로 분리하여 **HikariCP 커넥션 점유 시간을 최소화**했습니다. PG사 응답이 지연되어도 다른 유저의 서비스 이용에 영향을 주지 않습니다.
+
+```java
+// PaymentFacade.java (Pseudo Code)
+public void executePayment(...) {
+    // 1. 대기열 활성 상태 검증 (Active Queue Check)
+    waitingRoomService.validateActiveUser(userId);
+
+    // 2. 예약 상태 확인 (Short-lived Read Transaction)
+    paymentService.getPendingReservation(reservationId);
+
+    // 3. 외부 PG사 결제 요청 (DB 커넥션 미점유 구간 - 장애 전파 차단)
+    boolean success = mockPgClient.processPayment(amount);
+
+    // 4. 결과 반영 (CAS 기반 원자적 상태 변경)
+    if (success) {
+        paymentService.confirmPayment(reservationId);
+    } else {
+        paymentService.cancelPayment(reservationId);
+    }
+
+    // 5. [Finally] 대기열 즉시 이탈 (시스템 회전율 극대화)
+    waitingRoomService.removeActiveUser(userId);
+}
+```
+#### 🛡️ STEP 2: CAS(Compare-And-Swap) 기반 정합성 보장
+스케줄러와 결제 프로세스가 동시에 동일 예약건을 수정하려 할 때, **DB 레벨의 원자적 업데이트**를 통해 데이터 꼬임을 방지합니다. 별도의 무거운 비관적 락(Pessimistic Lock) 없이도 정합성을 유지하는 최적의 방식을 채택했습니다.
+
+```java
+// ReservationRepository.java
+@Modifying
+@Query("UPDATE Reservation r SET r.status = :newStatus " +
+        "WHERE r.id = :id AND r.status = :expectedStatus") // ⭐️ 핵심: 내가 확인한 상태가 유지될 때만 업데이트
+int updateStatusWithCAS(@Param("id") Long id,
+                        @Param("newStatus") ReservationStatus newStatus,
+                        @Param("expectedStatus") ReservationStatus expectedStatus);
+```
+* **동시성 방어 시나리오**: 
+1. 결제 프로세스가 PENDING 상태를 확인하고 결제를 완료함
+2. 그 사이 스케줄러가 타임아웃으로 상태를 CANCELLED로 변경 시도
+3. 결제 프로세스가 뒤늦게 CONFIRMED로 바꾸려 하지만, WHERE status = 'PENDING' 조건이 맞지 않아 업데이트 행 수 0 반환
+4. 시스템은 이를 인지하고 안전하게 사용자 환불(보상 트랜잭션) 절차 수행
+#### 🛡️ STEP 3: Safety Net (자가 치유 스케줄러)
+결제 도중 유저가 이탈하여 '결제 대기' 상태로 멈춘 좌석을 주기적으로 탐색하여 재개방합니다.
+* **분산 락 적용**: Redisson을 활용해 여러 대의 서버 중 단 한 대만 스케줄러를 실행하도록 제어
+* **성능 최적화**: JOIN FETCH와 복합 인덱스($O(\log N)$)를 활용하여 N+1 문제 해결 및 검색 속도 극대화
+* 
+### 3. 기술적 기대 효과 (Engineering Impact)
+| 구분 | 도입 기술 | 해결된 문제 (Pain Point) | 비즈니스 가치 |
+| :--- | :--- | :--- | :--- |
+| **가용성** | **Transaction Segregation** | 외부 PG사 지연 시 DB 커넥션 고갈(Connection Pool Exhaustion) 방지 | 결제 지연 중에도 서비스 전체 마비 방지 및 안정적 운영 가능 |
+| **정합성** | **CAS Pattern** | 분산 환경에서의 데이터 Race Condition 및 중복 수정 문제 | 초과 예매(Overselling) 사고 0% 달성 및 데이터 신뢰도 확보 |
+| **효율성** | **Active Queue Removal** | 한정된 입장 슬롯(Active Queue)의 점유 시간 낭비 | 대기열 회전율 최적화 및 신규 유저 입장 속도 비약적 향상 |
+| **안정성** | **Safety Net Scheduler** | 유저 이탈, 네트워크 장애 시 발생하는 유령 좌석(Ghost Seats) | 장애 상황에서도 5분 이내 좌석 가용 상태 자동 복구(Self-Healing) |
+---
 ## 🏗 System Architecture
 ```mermaid
 graph TD
@@ -48,7 +116,7 @@ graph TD
     User((User Client)) --> LB[Nginx / Load Balancer]
     
     %% 서버 및 로직
-    subgraph "Spring Boot Server (Java 25 Virtual Threads)"
+    subgraph "Spring Boot Server (Java 21 Virtual Threads)"
         LB --> API[REST Controller]
         API --> VWR[Virtual Waiting Room Service]
         VWR --> DL[Distributed Lock Manager]
@@ -71,6 +139,61 @@ graph TD
     %% AI 외부 연결
     Agent -.-> LLM[OpenAI / GPT-4o]
 ```
+### 💳 Phase 5: Payment & Reservation Flow (결제 및 예매 확정 아키텍처)
+
+티켓팅 시스템의 가장 중요한 구간인 결제 및 예매 확정 단계의 비즈니스 흐름입니다. 외부 PG사 연동 시 발생할 수 있는 네트워크 지연 및 타임아웃 상황에서도 **데이터 정합성**을 보장하고, **안전한 좌석 재개방(보상 트랜잭션)**이 이루어지도록 설계했습니다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant API as API Server
+    participant RS as Reservation Service
+    participant Redis as Redis (Lock/Queue)
+    participant DB as MariaDB
+    participant PG as External PG (Mock)
+
+    User->>API: 결제 요청 (예약 정보 및 결제 수단)
+    API->>RS: 결제 처리 위임
+    RS->>Redis: 좌석 Lock 및 Active Queue 유효성 검증
+    
+    alt Lock 만료 또는 Queue 이탈
+        Redis-->>RS: Invalid / Expired
+        RS-->>API: Timeout Exception
+        API-->>User: 결제 시간 초과 안내 (메인 이동)
+    else Lock 유효 (Valid)
+        Redis-->>RS: Valid
+        RS->>DB: 예약 상태 변경 [PENDING_PAYMENT]
+        
+        Note over RS, PG: 트랜잭션 분리 구간 (Network I/O 방어)
+        RS->>PG: 외부 결제 승인 요청 (Mock)
+        
+        alt 결제 성공 (Happy Path)
+            PG-->>RS: 결제 승인 완료
+            RS->>DB: 예약 상태 변경 [CONFIRMED]
+            RS->>Redis: 좌석 Lock 해제 & Active Queue 이탈 (예매 완료)
+            RS-->>API: 예매 완료 정보 반환
+            API-->>User: 티켓 발급 및 예매 완료 화면
+        else 결제 실패 / 오류
+            PG-->>RS: 결제 실패 (Fail / Error)
+            RS->>DB: 예약 상태 변경 [CANCELLED]
+            RS->>Redis: 좌석 Lock 즉시 해제 (좌석 재개방)
+            RS-->>API: 예매 실패 에러 반환
+            API-->>User: 결제 실패 안내 (좌석 선택 재이동)
+        end
+    end
+
+    %% Safety Net (보상 트랜잭션)
+    loop Every 1 Minute (Scheduler)
+        RS->>DB: 만료된 [PENDING_PAYMENT] 상태 조회
+        RS->>DB: 상태 [CANCELLED] 일괄 업데이트
+        RS->>Redis: 점유된 좌석 Lock 강제 해제 (Safety Net)
+    end
+```
+#### 💡 Key Engineering Points in Phase 5
+1. **상태 기반 결제 대기 (PENDING_PAYMENT):** 외부 API 연동 중 서버 장애가 발생하더라도 결제 상태를 추적할 수 있도록 임시 상태를 도입했습니다.
+2. **트랜잭션 분리 (Transaction Segregation):** 외부 PG사 호출(Network I/O) 구간을 DB 트랜잭션(`@Transactional`)에서 분리하여, 결제 지연으로 인한 DB 커넥션 풀 고갈(Connection Pool Exhaustion)을 방지합니다.
+3. **Safety Net 스케줄러 (보상 트랜잭션):** 브라우저 종료, 네트워크 단절 등으로 결제 상태가 고착화된 경우, 백그라운드 스케줄러가 주기적으로 만료된 예약을 찾아 취소 처리하고 Redis 락을 강제로 해제하여 좌석을 안전하게 대기열로 재개방합니다.
 ---
 ## 📂 Directory Structure
 
@@ -106,3 +229,40 @@ src/main/java/com/tcore/tcorev2/
 
 ### 3. AI 기반 자율 장애 대응 (Self-Healing)
 * 정적 임계치 기반의 모니터링 한계를 극복하기 위해 AI 에이전트를 도입했습니다. 에이전트는 실시간 지표를 분석하여 비정상 패턴을 감지하면 즉시 **Rate Limiting** 수치를 조정하거나 이상 IP를 차단하는 도구를 스스로 실행합니다.
+
+---
+## 🗺️ Project Roadmap
+
+티켓팅 시스템의 핵심 기능을 단계별로 구현하며, 각 단계마다 성능 최적화와 정합성 검증을 병행합니다.
+
+### ✅ Phase 1: Infrastructure & Domain Modeling (Completed)
+- [x] 기술 스택 선정 및 프로젝트 환경 설정 (Java 21, Spring Boot 3.5.10)
+- [x] 핵심 도메인 모델링 (Concert, Schedule, Seat, Reservation)
+- [x] Docker 기반 MariaDB 및 Redis 인프라 구축
+
+### 🔄 Phase 2: Concert Information API (Completed)
+- [x] 전체 공연 목록 조회 API 구현
+- [x] 특정 공연의 상세 일정 및 실시간 잔여 좌석 조회 구현
+- [x] 레이어드 아키텍처 리팩토링 및 테스트 코드(MockMvc, Mockito) 작성
+- [x] 개발 브랜치(`feature/concert-search`) PR 및 `develop` 병합
+
+### 📅 Phase 3: Distributed Lock Reservation (Completed)
+- [x] Redisson 기반 분산 락(Distributed Lock) 환경 설정
+- [x] 좌석 선택 및 임시 예약 로직 구현 (초과 예약 방지)
+- [x] 동시성 테스트를 통한 데이터 정합성 검증
+
+### 🚀 Phase 4: Virtual Waiting Queue & AI Ops (Completed)
+- [x] Redis ZSet 기반의 가상 대기열(Waiting Queue) 시스템 구축
+- [x] Spring AI를 활용한 실시간 트래픽 모니터링 및 대기열 자동 제어
+- [x] 트래픽 Spike 상황에서의 시스템 부하 테스트 (Mock 시뮬레이션 검증)
+
+### 💳 Phase 5: Payment & Final Confirmation (Completed)
+- [x] 결제 연동 시뮬레이션 및 예매 확정 처리 (Facade 패턴을 통한 트랜잭션 분리)
+- [x] 예매 취소 및 좌석 재개방 로직 구현 (CAS 패턴 및 Safety Net 스케줄러)
+- [x] 전체 비즈니스 흐름 최종 통합 테스트 (동시성 및 Race Condition 검증)
+
+### 🚀 Phase 6: Intelligent Ops & Monitoring (Planned)
+- [ ] Spring AI 기반 시스템 메트릭 관찰(Observability) 및 분석 에이전트 구축
+- [ ] 실시간 트래픽 패턴 분석을 통한 이상 징후 탐지 로직 구현
+- [ ] AI 도구 호출(Tool Calling)을 활용한 동적 Rate Limiting 및 유입량 자동 제어
+- [ ] 최종 시스템 부하 테스트(nGrinder/k6) 및 성능 최적화 리포트 작성
