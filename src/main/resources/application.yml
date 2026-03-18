@@ -7,9 +7,10 @@ spring:
       enabled: true
 
   datasource:
-    url: jdbc:mariadb://localhost:3306/t_core
-    username: t_core_user
-    password: pass
+    # ${환경변수:기본값} 문법을 사용하여, 환경변수가 없으면 로컬 기본값을 사용하도록 세팅합니다.
+    url: ${DB_URL:jdbc:mariadb://localhost:3306/t_core}
+    username: ${DB_USERNAME:t_core_user}
+    password: ${DB_PASSWORD:pass}
     driver-class-name: org.mariadb.jdbc.Driver
 
   # Redis 설정
