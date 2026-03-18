@@ -1,11 +1,6 @@
 package com.tcore.tcorev2.infrastructure.ai;
 
-import com.fasterxml.jackson.annotation.JsonClassDescription;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import com.tcore.tcorev2.application.port.SystemMetricPort;
 import com.tcore.tcorev2.application.service.RedisWaitingRoomService;
-import com.tcore.tcorev2.infrastructure.monitoring.MockSystemMetricAdapter; // Add this import
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -14,92 +9,31 @@ import org.springframework.context.annotation.Description;
 
 import java.util.function.Function;
 
-@Configuration
 @Slf4j
+@Configuration
 @RequiredArgsConstructor
 public class TrafficControlTools {
 
-    private final SystemMetricPort systemMetricPort;
     private final RedisWaitingRoomService waitingRoomService;
+    // AI가 우리 함수에 넘겨줄 파라미터 규격 (DTO)
+    public record TrafficRequest(Long concertId, int allowedUsersPerSecond, String reason) {}
 
-    // --- 1. Metric Tool Definition ---
-
-    // DTO for Input
-    @JsonClassDescription("Request to retrieve current system metrics (CPU, Memory).")
-    public record SystemLoadRequest(
-            @JsonProperty(required = false, defaultValue = "default")
-            @JsonPropertyDescription("Optional identifier for the metric source") String source
-    ) {}
-
-    // DTO for Output
-    public record SystemLoadResponse(double cpuUsage, double memoryUsage) {}
-
+    /**
+     * ⭐️ @Description은 매우 중요합니다!
+     * LLM은 이 설명을 읽고 "아, 트래픽을 조절할 땐 이 함수를 써야겠구나"라고 스스로 판단합니다.
+     */
     @Bean
-    @Description("Get current system load (CPU and Memory usage). Useful for checking system health.")
-    public Function<SystemLoadRequest, SystemLoadResponse> getSystemLoad() {
+    @Description("대기열에서 서비스로 진입하는 초당 허용 인원수(Rate Limit)를 동적으로 조절합니다.")
+    public Function<TrafficRequest, String> adjustTrafficLimit() {
         return request -> {
-            log.info("AI Agent called 'getSystemLoad'");
-            return new SystemLoadResponse(
-                    systemMetricPort.getCpuUsage(),
-                    systemMetricPort.getMemoryUsage()
-            );
-        };
-    }
+            log.warn("[AIOps Tool Executed] 🚨 AI가 트래픽 제한을 변경했습니다!");
+            log.warn("대상 콘서트: {}, 초당 허용 인원: {}명", request.concertId(), request.allowedUsersPerSecond());
+            log.warn("AI의 변경 사유: {}", request.reason());
 
-    // --- 2. Queue Metric Tool Definition ---
+            // ⭐️ 진짜 핵심: AI의 결정을 실제 Redis 밸브에 적용합니다!
+            waitingRoomService.setRateLimit(request.concertId(), request.allowedUsersPerSecond());
 
-    @JsonClassDescription("Request to retrieve waiting queue metrics for a specific concert.")
-    public record QueueMetricsRequest(
-            @JsonProperty(required = true)
-            @JsonPropertyDescription("The ID of the concert") Long concertId
-    ) {}
-
-    public record QueueMetricsResponse(long waitingSize, long activeUserCount) {}
-
-    @Bean
-    @Description("Get waiting queue metrics. Returns the number of waiting users and active users.")
-    public Function<QueueMetricsRequest, QueueMetricsResponse> getQueueMetrics() {
-        return request -> {
-            log.info("AI Agent called 'getQueueMetrics' for concertId: {}", request.concertId);
-            return new QueueMetricsResponse(
-                    systemMetricPort.getWaitingQueueSize(request.concertId),
-                    systemMetricPort.getActiveUserCount(request.concertId)
-            );
-        };
-    }
-
-    // --- 3. Scaling Tool Definition ---
-
-    @JsonClassDescription("Request to activate users from the waiting queue, allowing them to enter the reservation page.")
-    public record ActivateUsersRequest(
-            @JsonProperty(required = true)
-            @JsonPropertyDescription("The ID of the concert") Long concertId,
-            @JsonProperty(required = true)
-            @JsonPropertyDescription("The number of users to activate") int count
-    ) {}
-
-    public record ActivateUsersResponse(boolean success, String message) {}
-
-    @Bean
-    @Description("Activate users from the waiting queue. Use this to allow more users to enter when system load is low.")
-    public Function<ActivateUsersRequest, ActivateUsersResponse> activateUsers() {
-        return request -> {
-            log.info("AI Agent called 'activateUsers' for concertId: {}, count: {}", request.concertId, request.count);
-            try {
-                waitingRoomService.activateUsers(request.concertId, request.count);
-
-                // MockSystemMetricAdapter의 상태도 업데이트 (Mocking 환경에서만 필요)
-                if (systemMetricPort instanceof MockSystemMetricAdapter mockAdapter) {
-                    long currentActive = mockAdapter.getActiveUserCount(request.concertId);
-                    long currentWaiting = mockAdapter.getWaitingQueueSize(request.concertId);
-                    mockAdapter.setActiveUserCount(request.concertId, currentActive + request.count);
-                    mockAdapter.setWaitingQueueSize(request.concertId, Math.max(0, currentWaiting - request.count));
-                }
-                return new ActivateUsersResponse(true, "Successfully activated " + request.count + " users.");
-            } catch (Exception e) {
-                log.error("Failed to activate users", e);
-                return new ActivateUsersResponse(false, "Failed: " + e.getMessage());
-            }
+            return "트래픽 제한이 성공적으로 " + request.allowedUsersPerSecond() + "명으로 변경되었습니다.";
         };
     }
 }

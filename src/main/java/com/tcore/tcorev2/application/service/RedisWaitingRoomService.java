@@ -160,4 +160,40 @@ public class RedisWaitingRoomService {
             log.debug("유저 {} 님은 이미 Active Queue에 존재하지 않습니다. (Concert: {})", userId, concertId);
         }
     }
+
+    /**
+     * 특정 콘서트의 현재 대기열(ZSet)에 남아있는 총 인원수를 반환합니다.
+     * 시간 복잡도: O(1) - Redis의 ZCARD 명령어를 사용하여 매우 빠르게 동작합니다.
+     */
+    public long getWaitingQueueSize(Long concertId) {
+        // 유진님이 기존에 ZSet을 만들 때 사용하셨던 Key 이름 포맷으로 맞춰주세요!
+        // 예: "queue:waiting:" + concertId
+        String queueKey = "queue:waiting:" + concertId;
+
+        // Redisson을 통해 ZSet 객체를 가져와서 사이즈를 리턴합니다.
+        return redissonClient.getScoredSortedSet(queueKey).size();
+    }
+    private static final int DEFAULT_RATE_LIMIT = 50; // 기본 초당 입장 인원
+
+    /**
+     * [Phase 6: AI Ops] AI가 결정한 새로운 입장 허용량을 Redis에 저장합니다.
+     */
+    public void setRateLimit(Long concertId, int allowedUsersPerSecond) {
+        String rateLimitKey = "queue:rate_limit:" + concertId;
+        // Redisson의 Bucket을 이용해 단순 문자열/숫자를 저장합니다.
+        redissonClient.getBucket(rateLimitKey).set(allowedUsersPerSecond);
+        log.info("[Valve] 콘서트 {}의 입장 허용량이 {}명으로 변경되었습니다.", concertId, allowedUsersPerSecond);
+    }
+
+    /**
+     * [Phase 6: AI Ops] 현재 설정된 입장 허용량을 가져옵니다.
+     * 스케줄러가 대기열 유저를 활성화(Active) 시킬 때 이 값을 읽어서 사용해야 합니다!
+     */
+    public int getRateLimit(Long concertId) {
+        String rateLimitKey = "queue:rate_limit:" + concertId;
+        Object limit = redissonClient.getBucket(rateLimitKey).get();
+
+        // AI가 아직 값을 설정하지 않았다면 기본값을 반환합니다.
+        return limit != null ? (Integer) limit : DEFAULT_RATE_LIMIT;
+    }
 }
